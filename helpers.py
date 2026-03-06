@@ -33,317 +33,7 @@ def get_feature_importance(lst: list):
         ax.set_ylabel("Features", fontsize=14)
         ax.tick_params(axis='x', rotation=0, labelsize=12)
 
-def bin_count_pipe(df):
-    # ====== 1. Разделение на X и y ======
-    X = df.drop('deposit', axis=1)
-    y = df['deposit'].map({'yes': 1, 'no': 0})  # бинаризация таргета
-    
-    # ====== 2. Определение типов признаков ======
-    num_cols = X.select_dtypes(include='number').columns.to_list()
-    cat_cols = X.select_dtypes(exclude='number').columns.to_list()
-    cat_cols.remove('day')
-    day_cal = ['day']
-    
-    # ====== 3. Препроцессинг ======
-    num_pipeline = Pipeline([
-        ('scaler', StandardScaler())
-    ])
-    
-    cat_pipeline = Pipeline([
-        ('encoder', OneHotEncoder(drop='first', handle_unknown='ignore'))
-    ])
-    
-    count_pipeline = Pipeline([
-        ('count_encoder', CountEncoder()),
-        ('scaler', StandardScaler())
-    ])
-    
-    
-    preprocessor = ColumnTransformer([
-        ('num', num_pipeline, num_cols),
-        ('cat', cat_pipeline, cat_cols),
-        ('count', count_pipeline, day_cal)
-    ])
-    
-    # ====== 4. Разбиение с stratify ======
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
-        test_size=0.2,
-        random_state=seed,
-        stratify=y  # разбиенте со стратификацией
-    )
-    
-    # ====== 5. Модели ======
-    models = {
-        'LogisticRegression': LogisticRegression(max_iter=1000),
-        'RandomForest': RandomForestClassifier(random_state=seed),
-        'XGBoost': XGBClassifier(
-            eval_metric='logloss',
-            random_state=seed
-        )
-    }
-    
-    # ====== 6. Кросс-валидация ======
-    scoring = ['roc_auc', 'accuracy', 'precision', 'recall', 'f1']
-    
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed) # разбиенте со стратификацией
-    
-    cross_val_res = {}
-    
-    for name, model in models.items():
-        pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('model', model)
-        ])
-        
-        cv_results = cross_validate(
-            pipeline,
-            X_train,
-            y_train,
-            cv=cv,
-            scoring=scoring,
-            n_jobs=-1
-        )
-        
-        cross_val={}
-        for metric in scoring:
-            mean_score = cv_results[f'test_{metric}'].mean()
-            std_score = cv_results[f'test_{metric}'].std()
-            cross_val[metric] = str(round(mean_score, 4)) + ' ± ' + str(round(std_score, 4))
-        cross_val_res[name] = cross_val
-    
-    result_cross_val = pd.DataFrame(cross_val_res).T
-    
-    #====== 7. Финальное обучение и тест ======
-    list_of_models=[]
-    results={}
-    for name, model in models.items():
-        pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('model', model)
-        ])
-        
-        pipeline.fit(X_train, y_train)
-        list_of_models.append(pipeline)
-        y_pred = pipeline.predict(X_test)
-        y_pred_proba = pipeline.predict_proba(X_test)[:, 1]
-        roc = roc_auc_score(y_test, y_pred_proba)
-        accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
-        results[name] = [roc, accuracy, precision, recall, f1]
-    
-    result_test = pd.DataFrame(results, index=['roc_auc', 'accuracy', 'precision', 'recall', 'f1']).T
-
-    return result_cross_val, result_test, list_of_models
-
-def new_col_pipe(df):
-    # ====== 1. Разделение на X и y ======
-    X = df.drop('deposit', axis=1)
-    y = df['deposit'].map({'yes': 1, 'no': 0})  # бинаризация таргета
-    
-    # ====== 2. Определение типов признаков ======
-    num_cols = X.select_dtypes(include='number').columns.to_list()
-    cat_cols = X.select_dtypes(exclude='number').columns.to_list()
-    
-    # ====== 3. Препроцессинг ======
-    num_pipeline = Pipeline([
-        ('scaler', StandardScaler())
-    ])
-    
-    cat_pipeline = Pipeline([
-        ('encoder', OneHotEncoder(drop='first', handle_unknown='ignore'))
-    ])  
-    
-    preprocessor = ColumnTransformer([
-        ('num', num_pipeline, num_cols),
-        ('cat', cat_pipeline, cat_cols)
-    ])
-    
-    # ====== 4. Разбиение с stratify ======
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
-        test_size=0.2,
-        random_state=seed,
-        stratify=y  # разбиенте со стратификацией
-    )
-    
-    # ====== 5. Модели ======
-    models = {
-        'LogisticRegression': LogisticRegression(max_iter=1000),
-        'RandomForest': RandomForestClassifier(random_state=seed),
-        'XGBoost': XGBClassifier(
-            eval_metric='logloss',
-            random_state=seed
-        )
-    }
-    
-    # ====== 6. Кросс-валидация ======
-    scoring = ['roc_auc', 'accuracy', 'precision', 'recall', 'f1']
-    
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed) # разбиенте со стратификацией
-    
-    cross_val_res = {}
-    
-    for name, model in models.items():
-        pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('model', model)
-        ])
-        
-        cv_results = cross_validate(
-            pipeline,
-            X_train,
-            y_train,
-            cv=cv,
-            scoring=scoring,
-            n_jobs=-1
-        )
-        
-        cross_val={}
-        for metric in scoring:
-            mean_score = cv_results[f'test_{metric}'].mean()
-            std_score = cv_results[f'test_{metric}'].std()
-            cross_val[metric] = str(round(mean_score, 4)) + ' ± ' + str(round(std_score, 4))
-        cross_val_res[name] = cross_val
-    
-    result_cross_val = pd.DataFrame(cross_val_res).T
-    
-    #====== 7. Финальное обучение и тест ======
-    list_of_models=[]
-    results={}
-    for name, model in models.items():
-        pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('model', model)
-        ])
-        
-        pipeline.fit(X_train, y_train)
-        list_of_models.append(pipeline)
-        y_pred = pipeline.predict(X_test)
-        y_pred_proba = pipeline.predict_proba(X_test)[:, 1]
-        roc = roc_auc_score(y_test, y_pred_proba)
-        accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
-        results[name] = [roc, accuracy, precision, recall, f1]
-    
-    result_test = pd.DataFrame(results, index=['roc_auc', 'accuracy', 'precision', 'recall', 'f1']).T
-
-    return result_cross_val, result_test, list_of_models
-
-def target_enc_pipe(df):
-    # ====== 1. Разделение на X и y ======
-    X = df.drop('deposit', axis=1)
-    y = df['deposit'].map({'yes': 1, 'no': 0})  # бинаризация таргета
-    
-    # ====== 2. Определение типов признаков ======
-    num_cols = X.select_dtypes(include='number').columns.to_list()
-    cat_cols = X.select_dtypes(exclude='number').columns.to_list()
-    cat_cols.remove('duration_backet')
-    cat_cols.remove('poutcome')
-    cat_cols.remove('education')
-    cat_cols.remove('contact')
-    te_cals = ['duration_backet', 'poutcome', 'education', 'contact']
-    
-    # ====== 3. Препроцессинг ======
-    num_pipeline = Pipeline([
-        ('scaler', StandardScaler())
-    ])
-    
-    cat_pipeline = Pipeline([
-        ('encoder', OneHotEncoder(drop='first', handle_unknown='ignore'))
-    ])
-
-    te_pipeline = Pipeline([
-        ('target_encoder', TargetEncoder()),
-        ('scaler', StandardScaler())
-    ])
-    
-    preprocessor = ColumnTransformer([
-        ('num', num_pipeline, num_cols),
-        ('cat', cat_pipeline, cat_cols),
-        ('te', te_pipeline, te_cals)
-    ])
-    
-    # ====== 4. Разбиение с stratify ======
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
-        test_size=0.2,
-        random_state=seed,
-        stratify=y  # разбиенте со стратификацией
-    )
-    
-    # ====== 5. Модели ======
-    models = {
-        'LogisticRegression': LogisticRegression(max_iter=1000),
-        'RandomForest': RandomForestClassifier(random_state=seed),
-        'XGBoost': XGBClassifier(
-            eval_metric='logloss',
-            random_state=seed
-        )
-    }
-    
-    # ====== 6. Кросс-валидация ======
-    scoring = ['roc_auc', 'accuracy', 'precision', 'recall', 'f1']
-    
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed) # разбиенте со стратификацией
-    
-    cross_val_res = {}
-    
-    for name, model in models.items():
-        pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('model', model)
-        ])
-        
-        cv_results = cross_validate(
-            pipeline,
-            X_train,
-            y_train,
-            cv=cv,
-            scoring=scoring,
-            n_jobs=-1
-        )
-        
-        cross_val={}
-        for metric in scoring:
-            mean_score = cv_results[f'test_{metric}'].mean()
-            std_score = cv_results[f'test_{metric}'].std()
-            cross_val[metric] = str(round(mean_score, 4)) + ' ± ' + str(round(std_score, 4))
-        cross_val_res[name] = cross_val
-    
-    result_cross_val = pd.DataFrame(cross_val_res).T
-    
-    #====== 7. Финальное обучение и тест ======
-    list_of_models=[]
-    results={}
-    for name, model in models.items():
-        pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('model', model)
-        ])
-        
-        pipeline.fit(X_train, y_train)
-        list_of_models.append(pipeline)
-        y_pred = pipeline.predict(X_test)
-        y_pred_proba = pipeline.predict_proba(X_test)[:, 1]
-        roc = roc_auc_score(y_test, y_pred_proba)
-        accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
-        results[name] = [roc, accuracy, precision, recall, f1]
-    
-    result_test = pd.DataFrame(results, index=['roc_auc', 'accuracy', 'precision', 'recall', 'f1']).T
-
-    return result_cross_val, result_test, list_of_models
-
-def outliers_pipe(df):
-    
-    class QuantileClipper(BaseEstimator, TransformerMixin):
+class QuantileClipper(BaseEstimator, TransformerMixin):
         def __init__(self, lower=0.01, upper=0.99):
             self.lower = lower
             self.upper = upper
@@ -358,102 +48,190 @@ def outliers_pipe(df):
 
         def get_feature_names_out(self, input_features=None):
             return input_features
-    
-    # ====== 1. Разделение на X и y ======
-    X = df.drop('deposit', axis=1)
-    y = df['deposit'].map({'yes': 1, 'no': 0})  # бинаризация таргета
-    
-    # ====== 2. Определение типов признаков ======
-    num_cols = X.select_dtypes(include='number').columns.to_list()
-    cat_cols = X.select_dtypes(exclude='number').columns.to_list()
-    
-    # ====== 3. Препроцессинг ======
-    num_pipeline = Pipeline([
-        ('clipper', QuantileClipper(lower=0.01, upper=0.99)),
-        ('scaler', StandardScaler())
-    ])
-    
-    cat_pipeline = Pipeline([
-        ('encoder', OneHotEncoder(drop='first', handle_unknown='ignore'))
-    ])  
-    
-    preprocessor = ColumnTransformer([
-        ('num', num_pipeline, num_cols),
-        ('cat', cat_pipeline, cat_cols)
-    ])
-    
-    # ====== 4. Разбиение с stratify ======
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
-        test_size=0.2,
-        random_state=seed,
-        stratify=y  # разбиенте со стратификацией
-    )
-    
-    # ====== 5. Модели ======
-    models = {
-        'LogisticRegression': LogisticRegression(max_iter=1000),
-        'RandomForest': RandomForestClassifier(random_state=seed),
-        'XGBoost': XGBClassifier(
-            eval_metric='logloss',
-            random_state=seed
-        )
-    }
-    
-    # ====== 6. Кросс-валидация ======
-    scoring = ['roc_auc', 'accuracy', 'precision', 'recall', 'f1']
-    
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed) # разбиенте со стратификацией
-    
-    cross_val_res = {}
-    
-    for name, model in models.items():
-        pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('model', model)
+
+def run_experiment_pipeline(
+    df,
+    *,
+    seed=42,
+    test_size=0.2,
+    # preprocessing configuration (all keys optional)
+    num_cols=None,            # list or None -> auto detect numeric
+    cat_cols=None,            # list or None -> auto detect categorical
+    onehot_cols=None,         # subset of cat_cols to one-hot encode (default = all cat_cols)
+    count_cols=None,          # list of columns to CountEncode
+    target_cols=None,         # list of columns to TargetEncode
+    clip_cols=None,           # list of numeric columns to apply QuantileClipper
+    clip_quantiles=(0.01, 0.99),
+    drop_cols=None,           # list of columns to drop from X before processing
+    # models and scoring
+    models=None,              # dict name->estimator, default same as original
+    scoring=None,             # list or None -> default ['roc_auc','accuracy','precision','recall','f1']
+    n_splits=5,
+    n_jobs=-1
+):
+    """
+    Универсальная функция для тестирования разных препроцессингов и моделей.
+    Возвращает (result_cross_val, result_test, list_of_models).
+    """
+
+    # ===== 1. X, y =====
+    if 'deposit' not in df.columns:
+        raise ValueError("Входной df должен содержать колонку 'deposit'")
+    X = df.drop('deposit', axis=1).copy()
+    if drop_cols:
+        X = X.drop(columns=drop_cols, errors='ignore')
+    y = df['deposit'].map({'yes': 1, 'no': 0})
+
+    # ===== 2. Автовыбор колонок =====
+    num_cols_all = X.select_dtypes(include='number').columns.to_list()
+    cat_cols_all = X.select_dtypes(exclude='number').columns.to_list()
+
+    if num_cols is None:
+        num_cols = num_cols_all.copy()
+    else:
+        # keep only existing
+        num_cols = [c for c in num_cols if c in X.columns]
+
+    if cat_cols is None:
+        cat_cols = cat_cols_all.copy()
+    else:
+        cat_cols = [c for c in cat_cols if c in X.columns]
+
+    # default onehot = all categorical except those assigned to other encoders
+    if onehot_cols is None:
+        onehot_cols = cat_cols.copy()
+    else:
+        onehot_cols = [c for c in onehot_cols if c in cat_cols]
+
+    # ensure lists exist
+    count_cols = [c for c in (count_cols or []) if c in X.columns]
+    target_cols = [c for c in (target_cols or []) if c in X.columns]
+    clip_cols = [c for c in (clip_cols or []) if c in X.columns]
+
+    # remove special columns from onehot / generic cat list
+    # columns assigned to count or target should not be one-hot encoded
+    for c in count_cols + target_cols:
+        if c in onehot_cols:
+            onehot_cols.remove(c)
+        if c in cat_cols:
+            cat_cols.remove(c)
+
+    # if clip_cols in numeric, remove them from generic numeric pipeline (they'll be handled separately)
+    num_cols_for_standard = [c for c in num_cols if c not in clip_cols]
+
+    # ===== 3. Build pipelines =====
+    transformers = []
+
+    # numeric pipeline (standard scaler)
+    if len(num_cols_for_standard) > 0:
+        num_pipeline = Pipeline([('scaler', StandardScaler())])
+        transformers.append(('num', num_pipeline, num_cols_for_standard))
+
+    # clipper pipeline for selected numeric columns
+    if len(clip_cols) > 0:
+        clip_pipeline = Pipeline([
+            ('clipper', QuantileClipper(lower=clip_quantiles[0], upper=clip_quantiles[1])),
+            ('scaler', StandardScaler())
         ])
-        
+        transformers.append(('clip', clip_pipeline, clip_cols))
+
+    # one-hot for remaining categorical
+    if len(onehot_cols) > 0:
+        cat_pipeline = Pipeline([
+            ('ohe', OneHotEncoder(drop='first', handle_unknown='ignore'))
+        ])
+        transformers.append(('cat_ohe', cat_pipeline, onehot_cols))
+
+    # count encoder pipelines (each column via CountEncoder -> scaler)
+    if len(count_cols) > 0:
+        # CountEncoder can handle multiple cols at once; but we'll apply one transformer for all count_cols
+        count_pipeline = Pipeline([
+            ('count_enc', CountEncoder(cols=count_cols)),
+            ('scaler', StandardScaler())
+        ])
+        # CountEncoder expects DataFrame input for those columns; give the list
+        transformers.append(('count', count_pipeline, count_cols))
+
+    # target encoder pipeline
+    if len(target_cols) > 0:
+        te_pipeline = Pipeline([
+            ('te', TargetEncoder(cols=target_cols)),
+            ('scaler', StandardScaler())
+        ])
+        transformers.append(('target', te_pipeline, target_cols))
+
+    if len(transformers) == 0:
+        raise ValueError("Нечего трансформировать — проверьте конфигурацию колонок.")
+
+    preprocessor = ColumnTransformer(transformers, remainder='drop')
+
+    # ===== 4. Split =====
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=seed, stratify=y
+    )
+
+    # ===== 5. Models =====
+    if models is None:
+        models = {
+            'LogisticRegression': LogisticRegression(max_iter=1000),
+            'RandomForest': RandomForestClassifier(random_state=seed),
+            'XGBoost': XGBClassifier(eval_metric='logloss', random_state=seed)
+        }
+
+    if scoring is None:
+        scoring = ['roc_auc', 'accuracy', 'precision', 'recall', 'f1']
+
+    cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+
+    # ===== 6. Cross-validation =====
+    cross_val_res = {}
+    for name, model in models.items():
+        pipeline = Pipeline([('preprocessor', preprocessor), ('model', model)])
         cv_results = cross_validate(
-            pipeline,
-            X_train,
-            y_train,
-            cv=cv,
-            scoring=scoring,
-            n_jobs=-1
+            pipeline, X_train, y_train, cv=cv, scoring=scoring, n_jobs=n_jobs, error_score='raise'
         )
-        
-        cross_val={}
+        cross_val = {}
         for metric in scoring:
             mean_score = cv_results[f'test_{metric}'].mean()
             std_score = cv_results[f'test_{metric}'].std()
-            cross_val[metric] = str(round(mean_score, 4)) + ' ± ' + str(round(std_score, 4))
+            cross_val[metric] = round(mean_score, 4)
+            # if you want ± std, you can store as f"{mean:.4f} ± {std:.4f}"
         cross_val_res[name] = cross_val
-    
+
     result_cross_val = pd.DataFrame(cross_val_res).T
-    
-    #====== 7. Финальное обучение и тест ======
-    list_of_models=[]
-    results={}
+
+    # ===== 7. Fit on full train and evaluate on test =====
+    list_of_models = []
+    results = {}
     for name, model in models.items():
-        pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('model', model)
-        ])
-        
+        pipeline = Pipeline([('preprocessor', preprocessor), ('model', model)])
         pipeline.fit(X_train, y_train)
         list_of_models.append(pipeline)
+
         y_pred = pipeline.predict(X_test)
-        y_pred_proba = pipeline.predict_proba(X_test)[:, 1]
-        roc = roc_auc_score(y_test, y_pred_proba)
+        # some estimators may not have predict_proba; try/except
+        try:
+            y_pred_proba = pipeline.predict_proba(X_test)[:, 1]
+            roc = roc_auc_score(y_test, y_pred_proba)
+        except Exception:
+            # fallback: use decision_function if available, else set roc = np.nan
+            try:
+                scores = pipeline.decision_function(X_test)
+                roc = roc_auc_score(y_test, scores)
+            except Exception:
+                roc = np.nan
+
         accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred)
-        recall = recall_score(y_test, y_pred)
-        f1 = f1_score(y_test, y_pred)
+        precision = precision_score(y_test, y_pred, zero_division=0)
+        recall = recall_score(y_test, y_pred, zero_division=0)
+        f1 = f1_score(y_test, y_pred, zero_division=0)
         results[name] = [roc, accuracy, precision, recall, f1]
-    
+
     result_test = pd.DataFrame(results, index=['roc_auc', 'accuracy', 'precision', 'recall', 'f1']).T
 
     return result_cross_val, result_test, list_of_models
+
+
 
 
 
